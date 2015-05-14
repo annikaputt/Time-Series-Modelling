@@ -1,5 +1,5 @@
 ############################
-# PresentationFollowAlong.r
+# LectureNotes.r
 
 # Just looks at some of the plots and data that Isabella was working with during
 # her presentation
@@ -266,4 +266,130 @@ anova(m2.gamm$lme, m3.gamm$lme) # We have to pull the $lme
 # It looks like m2 fits the data better because the aic is higher
 
 
+##########
+# Poisson Regression
 
+# Look at some different poisson distributions based on different mu values
+n <- 1000; mu <- 1:6
+par(mfrow=c(2,3))
+for (i in 1:6){ 
+  X <- rpois(n=n, lambda=mu[i]);
+  Mean <- round(mean(X),1); 
+  Variance <- round(var(X),1);
+  plot(table(X), las=1, ylab="Frequency")
+  title(main=paste0("lambda = ",mu[i]),
+        sub=paste0("Estimated Mean = ", Mean, "; ", 
+                   "Estimated Variance = ", Variance))
+}
+
+## Read annual hurricane data
+annual = read.table("http://myweb.fsu.edu/jelsner/data/AnnualData.txt", header = TRUE)
+
+## Retain years 1950 through  2009
+dat = subset(annual, Year >= 1950 & Year <= 2009)
+
+## Create a data frame df containing only the basin-wide hurricane
+## counts and SOI and SST as the two predictors
+df = data.frame(H = dat$B.1, Y = dat$Year, SOI = dat$soi, SST = dat$sst)
+
+## Examine the first few records of the data frame df
+head(df)
+
+# Plot the annual hurricane data
+par(mfrow=c(1,1))
+plot(H~Y,data=df,type="l",xlab="Year",ylab="Number of Hurricanes")
+points(H~Y,data=df,pch=19)
+
+# Is the number of hurricanes increasing over the study period?
+# Poisson assumes that observations are independent. Is this true?
+par(mfrow=c(1,2))
+require(forecast)
+Acf(scale(df$H),main="ACF of Standardized Hurricane Counts") # Scale centres the data on the mean
+Pacf(scale(df$H),main="PACF of Standardized Hurricane Counts")
+# There is no evidence of serial correlation
+
+# Fit a poisson regression model, which regresses the number of hurricanes against year
+m1.pois <- glm(H~Y,
+               family=poisson(link=log),
+               data=df)
+summary(m1.pois)
+# The p-value for year is quite high, so we reject the hypothesis of a linear trend in hurricanes
+
+## Report estimated values for the Poisson regression model 
+## parameters, along with 95% confidence intervals
+est <- cbind(Estimate = coef(m1.pois),  
+             Interval = confint(m1.pois))  
+round(est,4)
+
+## Visualize the trend line produced by the Poisson
+## regression model
+par(mfrow=c(1,1))
+plot(H ~ Y, data=df, type="l", 
+     ylab="Number of Hurricanes", xlab="Year")
+points(H ~ Y, data=df, pch=19)
+fitted.m1.pois <- predict(m1.pois, type="response")
+lines(fitted.m1.pois ~ Y, data=df, pch=19, col="red", lwd=2)
+
+# Checking diagnostics
+require(car) # Has diagnostic plots for glm
+residualPlots(m1.pois,layout=c(1,1))
+
+# Plot the Cook's distances and the hat values agains the observation indexes
+influenceIndexPlot(m1.pois,vars=c("Cook","hat"),id.n=3)
+# Looks like we have a couple outliers
+
+# Model without the outliers
+m2.pois <- glm(H~1+Y,
+               family=poisson(link=log),
+               data=subset(df,Y!=1950 & Y!=2005))
+summary(m2.pois)
+
+# Checking diagnostics for the response variables
+# 1. Construst a poissoness plot for the response variable
+require(vcd)
+distplot(df$H,type="poisson")
+
+# 2. Inspect usual goodness-of-fit measures
+m1.pois <- glm(H ~ Y,     
+               family=poisson(link=log),         
+               data=df)
+
+m0.pois <- glm(H ~ 1,     
+               family=poisson(link=log),         
+               data=df)
+
+install.packages("lmtest")
+require(lmtest)
+
+lrtest(m0.pois, m1.pois) 
+# IF the p-value is small we favour the larger, more complex model
+m1.pois
+
+# 3. Check for over dispersion
+## look at residual deviance/df 
+deviance(m1.pois)/ m1.pois$df.residual
+
+## conduct a formal test for over/underdispersion
+install.packages("AER")
+require(AER)
+dispersiontest(m1.pois)
+
+# 4. Check for zero-inflation by fitting a Poisson regression model and its 
+# zero-inflated counterpart and comparing them with the Akaike Information 
+# Criterion (AIC).
+
+install.packages("pscl")
+require(pscl)
+m1.pois <- glm(H ~ Y,     
+               family=poisson(link=log),         
+               data=df)
+m1.zeroinfl <- zeroinfl(H ~ Y,     
+                        dist="pois",         
+                        data=df) # This doesn't actually work because we don't have zeros in our counts
+AIC(m1.pois, m1.zeroinfl)
+
+##########
+# Negative binomial regression
+# Can handle over-dispersion
+
+# Didn't actually go over it in class. See notes
